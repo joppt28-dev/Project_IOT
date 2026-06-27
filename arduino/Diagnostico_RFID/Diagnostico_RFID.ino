@@ -12,7 +12,7 @@
 //    - Si NO ves nada → problema de pines o cableado
 //
 // ============================================================
-
+//YALA
 #include <SPI.h>
 #include <MFRC522.h>
 
