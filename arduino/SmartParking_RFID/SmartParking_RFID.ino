@@ -36,14 +36,14 @@
 // ============================================================
 
 // --- WiFi ---
-const char* WIFI_SSID     = "TU_SSID_WIFI";
-const char* WIFI_PASSWORD = "TU_PASSWORD_WIFI";
+const char* WIFI_SSID     = "HONOR X7b";
+const char* WIFI_PASSWORD = "281169ender";
 
 // --- Supabase ---
 // Ejemplo: "https://abcdefghij.supabase.co"
-const char* SUPABASE_URL      = "https://TU_PROYECTO.supabase.co";
+const char* SUPABASE_URL      = "https://sotlajbbvrndjoanozjr.supabase.co";
 // Tu clave anon publica de Supabase (Settings > API > anon public)
-const char* SUPABASE_ANON_KEY = "TU_ANON_KEY_AQUI";
+const char* SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNvdGxhamJidnJuZGpvYW5vempyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1MDM0NTIsImV4cCI6MjA5ODA3OTQ1Mn0.4RN7xzaoty_ORIohREBpTessc-Ldf1feSW-K_-LXSeA";
 
 // --- Codigos de los lectores (deben coincidir con la BD) ---
 const char* ENTRY_READER_CODE = "ENTRY_READER_01";
@@ -56,51 +56,27 @@ const char* EXIT_READER_CODE  = "EXIT_READER_01";
 // 0x26 en lugar de 0x27. Si usas PCF8574A el default es 0x3F.
 // Usa un I2C Scanner sketch para verificar tus direcciones.
 #define LCD_ENTRY_ADDR  0x27   // LCD de la entrada  (bienvenida)
-#define LCD_EXIT_ADDR   0x3F   // LCD de la salida   (validacion pago)
+#define LCD_EXIT_ADDR   0x27   // LCD de la salida   (validacion pago)
 
 // ============================================================
 //  PINES ESP32
 // ============================================================
-//  PINES ESP32 - TODOS LOS GPIO SON UNICOS
-//
-//  AUDITORIA COMPLETA DE PINES:
-//  GPIO  4 -> RST lector RFID entrada
-//  GPIO  5 -> SS  lector RFID entrada
-//  GPIO 13 -> SS  lector RFID salida
-//  GPIO 14 -> LED rojo salida
-//  GPIO 15 -> (libre - era SS salida, strapping pin, no usar)
-//  GPIO 16 -> RST lector RFID salida
-//  GPIO 18 -> SCK  (bus SPI compartido entre los 2 RC522)
-//  GPIO 19 -> MISO (bus SPI compartido entre los 2 RC522)
-//  GPIO 21 -> SDA  (bus I2C compartido entre los 2 LCD)
-//  GPIO 22 -> SCL  (bus I2C compartido entre los 2 LCD)
-//  GPIO 23 -> MOSI (bus SPI compartido entre los 2 RC522)
-//  GPIO 25 -> Servo entrada
-//  GPIO 26 -> Servo salida
-//  GPIO 27 -> LED verde salida
-//  GPIO 32 -> LED verde entrada
-//  GPIO 33 -> LED rojo entrada
-//
-//  NOTA: SCK/MISO/MOSI van fisicamente a AMBOS RC522 (asi
-//  funciona SPI: bus compartido, chip select distinto).
-//  SDA/SCL van fisicamente a AMBOS LCD (asi funciona I2C:
-//  bus compartido, direccion distinta 0x27 y 0x3F).
-// ============================================================
 
-//  Bus SPI (mismos cables fisicos a ambos RC522)
+//  SPI compartido para los dos RC522
+//  (mismo bus SPI, distintos pines SS y RST)
 #define PIN_SCK   18
 #define PIN_MISO  19
 #define PIN_MOSI  23
 
-//  Lector RFID #1 - ENTRADA (pines unicos de este lector)
-#define PIN_SS_ENTRY    5  // SS  / SDA del RC522 de entrada
-#define PIN_RST_ENTRY   4  // RST del RC522 de entrada
+//  Lector RFID #1 - ENTRADA
+#define PIN_SS_ENTRY   5   // SDA / SS del RC522 de entrada
+#define PIN_RST_ENTRY  4   // RST del RC522 de entrada
 
-//  Lector RFID #2 - SALIDA (pines unicos de este lector)
-#define PIN_SS_EXIT    13  // SS  / SDA del RC522 de salida (GPIO 13, no strapping)
-#define PIN_RST_EXIT   16  // RST del RC522 de salida
+//  Lector RFID #2 - SALIDA
+#define PIN_SS_EXIT    13  // SDA / SS del RC522 de salida
+#define PIN_RST_EXIT   16   // RST del RC522 de salida
 
-//  Bus I2C (mismos cables fisicos a ambos LCD)
+//  I2C compartido para los dos LCD
 #define PIN_SDA  21
 #define PIN_SCL  22
 
@@ -117,7 +93,6 @@ const char* EXIT_READER_CODE  = "EXIT_READER_01";
 //  LEDs salida
 #define PIN_LED_EXIT_GREEN   27  // Verde -> salida permitida
 #define PIN_LED_EXIT_RED     14  // Rojo  -> no pagado / error
-
 
 // ============================================================
 //  CONSTANTES DE COMPORTAMIENTO
@@ -212,35 +187,26 @@ void setup() {
   mostrarLCDSalida("Smart Parking", "Iniciando...");
 
   // --- Servos ---
-  servoEntry.attach(PIN_SERVO_ENTRY);
-  servoExit.attach(PIN_SERVO_EXIT);
+  servoEntry.setPeriodHertz(50);
+  servoEntry.attach(PIN_SERVO_ENTRY, 500, 2400);
+  servoExit.setPeriodHertz(50);
+  servoExit.attach(PIN_SERVO_EXIT, 500, 2400);
   servoEntry.write(SERVO_CERRADO);
   servoExit.write(SERVO_CERRADO);
   delay(500);
 
   // --- SPI y lectores RFID ---
-  // CRITICO: poner SS de AMBOS lectores en HIGH antes de
-  // inicializar SPI, para evitar colisiones en el bus.
-  pinMode(PIN_SS_ENTRY, OUTPUT);
-  pinMode(PIN_SS_EXIT,  OUTPUT);
-  digitalWrite(PIN_SS_ENTRY, HIGH);
-  digitalWrite(PIN_SS_EXIT,  HIGH);
-  delay(10);
-
   SPI.begin(PIN_SCK, PIN_MISO, PIN_MOSI);
 
   rfidEntry.PCD_Init();
-  delay(100);
+  delay(50);
   rfidExit.PCD_Init();
-  delay(100);
+  delay(50);
 
-  // Verificar firmware de cada lector
-  Serial.print(F("RFID Entrada (0x"));
-  Serial.print(rfidEntry.PCD_ReadRegister(MFRC522::VersionReg), HEX);
-  Serial.println(F(") - si es 0x00 o 0xFF: revisa el cableado SPI"));
-  Serial.print(F("RFID Salida  (0x"));
-  Serial.print(rfidExit.PCD_ReadRegister(MFRC522::VersionReg), HEX);
-  Serial.println(F(") - si es 0x00 o 0xFF: revisa el cableado SPI"));
+  Serial.print(F("RFID Entrada firmware: "));
+  rfidEntry.PCD_DumpVersionToSerial();
+  Serial.print(F("RFID Salida firmware:  "));
+  rfidExit.PCD_DumpVersionToSerial();
 
   // --- WiFi ---
   iniciarWiFi();
@@ -479,23 +445,12 @@ void procesarSalida(const String& rfidCode) {
   if (ok && action == "exit_allowed") {
     float amountPaid = doc["amount_paid"] | 0.0f;
 
-    // Linea 1: RFID truncado + " HA PAGADO" (maximo 16 chars)
-    // Ejemplo: "A1B2C3D4 HA PAG"
-    char linea1Pago[17];
-    String rfidCorto = rfidCode.substring(0, min((int)rfidCode.length(), 8));
-    snprintf(linea1Pago, sizeof(linea1Pago), "%.8s HA PAGADO", rfidCorto.c_str());
-
-    char linea2Pago[17];
-    snprintf(linea2Pago, sizeof(linea2Pago), "Pagado S/ %.2f", amountPaid);
-
-    // Mostrar confirmacion de pago ANTES de abrir la tranquera
-    mostrarLCDSalida(linea1Pago, linea2Pago);
-    delay(2500);
-
-    // Abrir tranquera y mostrar mensaje de despedida
     abrirTransqueraSalida();
-    mostrarLCDSalida("GRACIAS POR SU", "   VISITA!  :)");
-    delay(3000);
+
+    char linea2[17];
+    snprintf(linea2, sizeof(linea2), "Pagado S/ %.2f", amountPaid);
+    mostrarLCDSalida(" HASTA LUEGO!", linea2);
+    delay(3500);
     mostrarLCDSalida("Salida", "Escanee tarjeta");
 
   // --- CASO: REQUIERE PAGO (intento de salida sin pagar) ---
@@ -505,10 +460,9 @@ void procesarSalida(const String& rfidCode) {
 
     ledSalida(false); // LED rojo
 
-    // Linea 1: SALIDA DENEGADA
-    char linea1[17], linea2[17], linea3[17];
-    snprintf(linea1, sizeof(linea1), "SALIDA DENEGADA");
-    snprintf(linea2, sizeof(linea2), "PAGUE: S/ %.2f", amountDue);
+    char linea1[17], linea2[17];
+    snprintf(linea1, sizeof(linea1), "PAGUE: S/ %.2f", amountDue);
+    snprintf(linea2, sizeof(linea2), "%dh - Use el app", chargedHrs);
 
     mostrarLCDSalida(linea1, linea2);
 
@@ -519,11 +473,7 @@ void procesarSalida(const String& rfidCode) {
     }
     ledSalida(false); // vuelve al rojo fijo
 
-    // Mostrar horas y app en la segunda pantalla
-    char linea2b[17];
-    snprintf(linea2b, sizeof(linea2b), "%dh - Use el app", chargedHrs);
-    mostrarLCDSalida("SALIDA DENEGADA", linea2b);
-    delay(2500);
+    delay(2000);
     mostrarLCDSalida("Salida", "Escanee tarjeta");
 
   // --- CASO: RFID DESCONOCIDO ---
