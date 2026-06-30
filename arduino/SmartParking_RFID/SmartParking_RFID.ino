@@ -479,12 +479,23 @@ void procesarSalida(const String& rfidCode) {
   if (ok && action == "exit_allowed") {
     float amountPaid = doc["amount_paid"] | 0.0f;
 
-    abrirTransqueraSalida();
+    // Linea 1: RFID truncado + " HA PAGADO" (maximo 16 chars)
+    // Ejemplo: "A1B2C3D4 HA PAG"
+    char linea1Pago[17];
+    String rfidCorto = rfidCode.substring(0, min((int)rfidCode.length(), 8));
+    snprintf(linea1Pago, sizeof(linea1Pago), "%.8s HA PAGADO", rfidCorto.c_str());
 
-    char linea2[17];
-    snprintf(linea2, sizeof(linea2), "Pagado S/ %.2f", amountPaid);
-    mostrarLCDSalida(" HASTA LUEGO!", linea2);
-    delay(3500);
+    char linea2Pago[17];
+    snprintf(linea2Pago, sizeof(linea2Pago), "Pagado S/ %.2f", amountPaid);
+
+    // Mostrar confirmacion de pago ANTES de abrir la tranquera
+    mostrarLCDSalida(linea1Pago, linea2Pago);
+    delay(2500);
+
+    // Abrir tranquera y mostrar mensaje de despedida
+    abrirTransqueraSalida();
+    mostrarLCDSalida("GRACIAS POR SU", "   VISITA!  :)");
+    delay(3000);
     mostrarLCDSalida("Salida", "Escanee tarjeta");
 
   // --- CASO: REQUIERE PAGO (intento de salida sin pagar) ---
@@ -494,9 +505,10 @@ void procesarSalida(const String& rfidCode) {
 
     ledSalida(false); // LED rojo
 
-    char linea1[17], linea2[17];
-    snprintf(linea1, sizeof(linea1), "PAGUE: S/ %.2f", amountDue);
-    snprintf(linea2, sizeof(linea2), "%dh - Use el app", chargedHrs);
+    // Linea 1: SALIDA DENEGADA
+    char linea1[17], linea2[17], linea3[17];
+    snprintf(linea1, sizeof(linea1), "SALIDA DENEGADA");
+    snprintf(linea2, sizeof(linea2), "PAGUE: S/ %.2f", amountDue);
 
     mostrarLCDSalida(linea1, linea2);
 
@@ -507,7 +519,11 @@ void procesarSalida(const String& rfidCode) {
     }
     ledSalida(false); // vuelve al rojo fijo
 
-    delay(2000);
+    // Mostrar horas y app en la segunda pantalla
+    char linea2b[17];
+    snprintf(linea2b, sizeof(linea2b), "%dh - Use el app", chargedHrs);
+    mostrarLCDSalida("SALIDA DENEGADA", linea2b);
+    delay(2500);
     mostrarLCDSalida("Salida", "Escanee tarjeta");
 
   // --- CASO: RFID DESCONOCIDO ---
