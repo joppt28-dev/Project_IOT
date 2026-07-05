@@ -1,14 +1,24 @@
 // ============================================================
-//  SMART PARKING RFID - ESP32
+//  SMART PARKING RFID - ESP32 (ACTUALIZADO)
 //  Proyecto IoT: Estacionamiento vehicular con RFID + Supabase
 // ============================================================
 //
+//  ARQUITECTURA NUEVA:
+//    - 1 Lector RFID RC522: PUERTA UNICA (Entrada/Salida)
+//    - 1 Lector RFID RC522: TOTEM DE PAGO AUTOMATICO
+//    - 1 LCD 16x2 con modulo I2C (unico)
+//    - 1 Servo SG90 (tranquera puerta unica)
+//    - 3 LEDs:
+//        * Verde  -> puerta abierta (ingreso/salida OK)
+//        * Rojo   -> puerta cerrada / acceso denegado
+//        * Pago   -> se enciende 2 seg al pagar exitosamente
+//
 //  MATERIALES:
 //    - ESP32 (CP2102)
-//    - 2x LCD 16x2 con modulo I2C (PCF8574)
-//    - 2x Servo SG90 (tranqueras)
+//    - 1x LCD 16x2 con modulo I2C (PCF8574)
+//    - 1x Servo SG90 (tranquera)
 //    - 2x Lector RFID RC522
-//    - 4x LED (2 entrada + 2 salida)
+//    - 3x LED (2 puerta + 1 pago)
 //    - Resistencias 220 o 330 ohmios para cada LED
 //
 //  LIBRERIAS REQUERIDAS (instalar en Arduino IDE):
@@ -40,59 +50,46 @@ const char* WIFI_SSID     = "HONOR X7b";
 const char* WIFI_PASSWORD = "281169ender";
 
 // --- Supabase ---
-// Ejemplo: "https://abcdefghij.supabase.co"
-const char* SUPABASE_URL      = "https://sotlajbbvrndjoanozjr.supabase.co";
-// Tu clave anon publica de Supabase (Settings > API > anon public)
-const char* SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNvdGxhamJidnJuZGpvYW5vempyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1MDM0NTIsImV4cCI6MjA5ODA3OTQ1Mn0.4RN7xzaoty_ORIohREBpTessc-Ldf1feSW-K_-LXSeA";
+const char* SUPABASE_URL      = "https://vioxyggyvewwxqkfvuqd.supabase.co";
+const char* SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpb3h5Z2d5dmV3d3hxa2Z2dXFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyMTIwNzMsImV4cCI6MjA5ODc4ODA3M30.3q5Q3MqgRJ7B3ZnQ1qBve-RcJsxa2A3GB67cGSmAQ0U";
 
 // --- Codigos de los lectores (deben coincidir con la BD) ---
-const char* ENTRY_READER_CODE = "ENTRY_READER_01";
-const char* EXIT_READER_CODE  = "EXIT_READER_01";
+const char* GATE_READER_CODE    = "GATE_READER_01";     // Puerta unica (entrada/salida)
+const char* PAYMENT_READER_CODE = "PAYMENT_READER_01";  // Totem de pago automatico
 
-// --- Direccion I2C de los modulos LCD ---
-// IMPORTANTE: Los dos LCD en el mismo bus I2C deben tener
-// direcciones distintas. Configura el jumper A0 del segundo
-// modulo PCF8574 (soldalo o puentealo a GND) para obtener
-// 0x26 en lugar de 0x27. Si usas PCF8574A el default es 0x3F.
-// Usa un I2C Scanner sketch para verificar tus direcciones.
-#define LCD_ENTRY_ADDR  0x27   // LCD de la entrada  (bienvenida)
-#define LCD_EXIT_ADDR   0x27   // LCD de la salida   (validacion pago)
+// --- Direccion I2C del modulo LCD unico ---
+#define LCD_ADDR  0x27   // LCD principal (unico)
 
 // ============================================================
 //  PINES ESP32
 // ============================================================
 
 //  SPI compartido para los dos RC522
-//  (mismo bus SPI, distintos pines SS y RST)
 #define PIN_SCK   18
 #define PIN_MISO  19
 #define PIN_MOSI  23
 
-//  Lector RFID #1 - ENTRADA
-#define PIN_SS_ENTRY   5   // SDA / SS del RC522 de entrada
-#define PIN_RST_ENTRY  4   // RST del RC522 de entrada
+//  Lector RFID #1 - PUERTA (Entrada/Salida)
+#define PIN_SS_GATE   5    // SDA / SS del RC522 de la puerta
+#define PIN_RST_GATE  4    // RST del RC522 de la puerta
 
-//  Lector RFID #2 - SALIDA
-#define PIN_SS_EXIT    13  // SDA / SS del RC522 de salida
-#define PIN_RST_EXIT   16   // RST del RC522 de salida
+//  Lector RFID #2 - TOTEM DE PAGO
+#define PIN_SS_PAYMENT   13   // SDA / SS del RC522 del totem
+#define PIN_RST_PAYMENT  16   // RST del RC522 del totem
 
-//  I2C compartido para los dos LCD
+//  I2C para el LCD unico
 #define PIN_SDA  21
 #define PIN_SCL  22
 
-//  Servo - tranquera entrada
-#define PIN_SERVO_ENTRY  25
+//  Servo - tranquera puerta unica
+#define PIN_SERVO_GATE  25
 
-//  Servo - tranquera salida
-#define PIN_SERVO_EXIT   26
+//  LEDs puerta (verde/rojo)
+#define PIN_LED_GATE_GREEN  32  // Verde -> ingreso/salida permitida
+#define PIN_LED_GATE_RED    33  // Rojo  -> denegado / lleno / no pagado
 
-//  LEDs entrada
-#define PIN_LED_ENTRY_GREEN  32  // Verde -> ingreso permitido
-#define PIN_LED_ENTRY_RED    33  // Rojo  -> denegado / lleno
-
-//  LEDs salida
-#define PIN_LED_EXIT_GREEN   27  // Verde -> salida permitida
-#define PIN_LED_EXIT_RED     14  // Rojo  -> no pagado / error
+//  LED de pago (totem)
+#define PIN_LED_PAYMENT     27  // Se enciende 2 seg al pagar exitosamente
 
 // ============================================================
 //  CONSTANTES DE COMPORTAMIENTO
@@ -105,33 +102,32 @@ const char* EXIT_READER_CODE  = "EXIT_READER_01";
 #define TIEMPO_ENTRE_LECTURAS_MS        2000   // ms de espera anti-rebote entre lecturas
 #define POLL_LCD_MSG_INTERVAL_MS        4000   // ms entre consultas de mensajes LCD
 #define RECONEXION_WIFI_INTERVAL_MS    10000   // ms entre intentos de reconexion WiFi
+#define PAYMENT_LED_DURATION_MS         2000   // ms que el LED de pago permanece encendido
 
 // ============================================================
 //  OBJETOS GLOBALES
 // ============================================================
 
-MFRC522 rfidEntry(PIN_SS_ENTRY, PIN_RST_ENTRY);
-MFRC522 rfidExit (PIN_SS_EXIT,  PIN_RST_EXIT);
+MFRC522 rfidGate(PIN_SS_GATE, PIN_RST_GATE);
+MFRC522 rfidPayment(PIN_SS_PAYMENT, PIN_RST_PAYMENT);
 
-LiquidCrystal_I2C lcdEntry(LCD_ENTRY_ADDR, 16, 2);
-LiquidCrystal_I2C lcdExit (LCD_EXIT_ADDR,  16, 2);
+LiquidCrystal_I2C lcd(LCD_ADDR, 16, 2);
 
-Servo servoEntry;
-Servo servoExit;
+Servo servoGate;
 
 // ============================================================
 //  VARIABLES DE ESTADO
 // ============================================================
 
-bool     entryGateOpen      = false;
-uint32_t entryGateOpenedAt  = 0;
+bool     gateOpen        = false;
+uint32_t gateOpenedAt    = 0;
 
-bool     exitGateOpen       = false;
-uint32_t exitGateOpenedAt   = 0;
+bool     paymentLedOn    = false;
+uint32_t paymentLedOnAt  = 0;
 
 uint32_t lastLcdPoll          = 0;
-uint32_t lastEntryRead        = 0;
-uint32_t lastExitRead         = 0;
+uint32_t lastGateRead         = 0;
+uint32_t lastPaymentRead      = 0;
 uint32_t lastWifiReconnectTry = 0;
 
 // ============================================================
@@ -140,17 +136,15 @@ uint32_t lastWifiReconnectTry = 0;
 
 String   leerRFID(MFRC522& lector);
 String   llamarRPC(const String& funcion, const String& body);
-void     procesarEntrada(const String& rfidCode);
-void     procesarSalida(const String& rfidCode);
+void     procesarPuerta(const String& rfidCode);
+void     procesarPago(const String& rfidCode);
 void     consultarMensajesLCD();
-void     abrirTransqueraEntrada();
-void     cerrarTransqueraEntrada();
-void     abrirTransqueraSalida();
-void     cerrarTransqueraSalida();
-void     ledEntrada(bool verde);
-void     ledSalida(bool verde);
-void     mostrarLCDEntrada(const String& linea1, const String& linea2 = "");
-void     mostrarLCDSalida (const String& linea1, const String& linea2 = "");
+void     abrirTranquera();
+void     cerrarTranquera();
+void     ledPuerta(bool verde);
+void     encenderLedPago();
+void     apagarLedPago();
+void     mostrarLCD(const String& linea1, const String& linea2 = "");
 void     iniciarWiFi();
 void     verificarWiFi();
 
@@ -163,57 +157,49 @@ void setup() {
   delay(300);
   Serial.println(F("\n========================================"));
   Serial.println(F("    SMART PARKING RFID - INICIANDO"));
+  Serial.println(F("    1 Puerta + 1 Totem de Pago"));
   Serial.println(F("========================================"));
 
   // --- LEDs ---
-  pinMode(PIN_LED_ENTRY_GREEN, OUTPUT);
-  pinMode(PIN_LED_ENTRY_RED,   OUTPUT);
-  pinMode(PIN_LED_EXIT_GREEN,  OUTPUT);
-  pinMode(PIN_LED_EXIT_RED,    OUTPUT);
+  pinMode(PIN_LED_GATE_GREEN, OUTPUT);
+  pinMode(PIN_LED_GATE_RED,   OUTPUT);
+  pinMode(PIN_LED_PAYMENT,    OUTPUT);
 
-  // Estado inicial: ambos lados en rojo (tranqueras cerradas)
-  ledEntrada(false);
-  ledSalida(false);
+  // Estado inicial: puerta cerrada (rojo), LED pago apagado
+  ledPuerta(false);
+  digitalWrite(PIN_LED_PAYMENT, LOW);
 
-  // --- I2C y LCDs ---
+  // --- I2C y LCD unico ---
   Wire.begin(PIN_SDA, PIN_SCL);
 
-  lcdEntry.init();
-  lcdEntry.backlight();
-  mostrarLCDEntrada("Smart Parking", "Iniciando...");
+  lcd.init();
+  lcd.backlight();
+  mostrarLCD("Smart Parking", "Iniciando...");
 
-  lcdExit.init();
-  lcdExit.backlight();
-  mostrarLCDSalida("Smart Parking", "Iniciando...");
-
-  // --- Servos ---
-  servoEntry.setPeriodHertz(50);
-  servoEntry.attach(PIN_SERVO_ENTRY, 500, 2400);
-  servoExit.setPeriodHertz(50);
-  servoExit.attach(PIN_SERVO_EXIT, 500, 2400);
-  servoEntry.write(SERVO_CERRADO);
-  servoExit.write(SERVO_CERRADO);
+  // --- Servo unico ---
+  servoGate.setPeriodHertz(50);
+  servoGate.attach(PIN_SERVO_GATE, 500, 2400);
+  servoGate.write(SERVO_CERRADO);
   delay(500);
 
   // --- SPI y lectores RFID ---
   SPI.begin(PIN_SCK, PIN_MISO, PIN_MOSI);
 
-  rfidEntry.PCD_Init();
+  rfidGate.PCD_Init();
   delay(50);
-  rfidExit.PCD_Init();
+  rfidPayment.PCD_Init();
   delay(50);
 
-  Serial.print(F("RFID Entrada firmware: "));
-  rfidEntry.PCD_DumpVersionToSerial();
-  Serial.print(F("RFID Salida firmware:  "));
-  rfidExit.PCD_DumpVersionToSerial();
+  Serial.print(F("RFID Puerta firmware: "));
+  rfidGate.PCD_DumpVersionToSerial();
+  Serial.print(F("RFID Pago firmware:   "));
+  rfidPayment.PCD_DumpVersionToSerial();
 
   // --- WiFi ---
   iniciarWiFi();
 
-  // --- Mensajes iniciales en LCD ---
-  mostrarLCDEntrada("Bienvenido al", "Estacionamiento");
-  mostrarLCDSalida("Salida", "Escanee tarjeta");
+  // --- Mensaje inicial en LCD ---
+  mostrarLCD("Bienvenido al", "Estacionamiento");
 
   Serial.println(F("\n[OK] Sistema LISTO - esperando tarjetas...\n"));
 }
@@ -227,35 +213,37 @@ void loop() {
   // 1. Verificar y reconectar WiFi si es necesario
   verificarWiFi();
 
-  // 2. Cerrar tranqueras automaticamente por timeout
-  if (entryGateOpen && (millis() - entryGateOpenedAt >= TIEMPO_TRANQUERA_ABIERTA_MS)) {
-    cerrarTransqueraEntrada();
-  }
-  if (exitGateOpen && (millis() - exitGateOpenedAt >= TIEMPO_TRANQUERA_ABIERTA_MS)) {
-    cerrarTransqueraSalida();
+  // 2. Cerrar tranquera automaticamente por timeout
+  if (gateOpen && (millis() - gateOpenedAt >= TIEMPO_TRANQUERA_ABIERTA_MS)) {
+    cerrarTranquera();
   }
 
-  // 3. Leer lector RFID de ENTRADA
-  if (millis() - lastEntryRead >= TIEMPO_ENTRE_LECTURAS_MS) {
-    String rfidEntrada = leerRFID(rfidEntry);
-    if (rfidEntrada.length() > 0) {
-      lastEntryRead = millis();
-      Serial.println(">> ENTRADA detectada: " + rfidEntrada);
-      procesarEntrada(rfidEntrada);
+  // 3. Apagar LED de pago automaticamente por timeout (2 segundos)
+  if (paymentLedOn && (millis() - paymentLedOnAt >= PAYMENT_LED_DURATION_MS)) {
+    apagarLedPago();
+  }
+
+  // 4. Leer lector RFID de PUERTA (Entrada/Salida)
+  if (millis() - lastGateRead >= TIEMPO_ENTRE_LECTURAS_MS) {
+    String rfidPuerta = leerRFID(rfidGate);
+    if (rfidPuerta.length() > 0) {
+      lastGateRead = millis();
+      Serial.println(">> PUERTA detectada: " + rfidPuerta);
+      procesarPuerta(rfidPuerta);
     }
   }
 
-  // 4. Leer lector RFID de SALIDA
-  if (millis() - lastExitRead >= TIEMPO_ENTRE_LECTURAS_MS) {
-    String rfidSalida = leerRFID(rfidExit);
-    if (rfidSalida.length() > 0) {
-      lastExitRead = millis();
-      Serial.println(">> SALIDA detectada: " + rfidSalida);
-      procesarSalida(rfidSalida);
+  // 5. Leer lector RFID del TOTEM DE PAGO
+  if (millis() - lastPaymentRead >= TIEMPO_ENTRE_LECTURAS_MS) {
+    String rfidPago = leerRFID(rfidPayment);
+    if (rfidPago.length() > 0) {
+      lastPaymentRead = millis();
+      Serial.println(">> PAGO detectado: " + rfidPago);
+      procesarPago(rfidPago);
     }
   }
 
-  // 5. Consultar mensajes del dashboard para el LCD de salida
+  // 6. Consultar mensajes del servidor para el LCD
   if (millis() - lastLcdPoll >= POLL_LCD_MSG_INTERVAL_MS) {
     lastLcdPoll = millis();
     consultarMensajesLCD();
@@ -324,189 +312,189 @@ String llamarRPC(const String& funcion, const String& body) {
 }
 
 // ============================================================
-//  PROCESAR ESCANEO EN LECTOR DE ENTRADA
+//  PROCESAR ESCANEO EN LECTOR DE PUERTA (Entrada/Salida)
+//
+//  La BD decide automaticamente si es ENTRADA o SALIDA:
+//    - Si no tiene sesion activa -> ENTRADA
+//    - Si tiene sesion pagada -> SALIDA permitida
+//    - Si tiene sesion sin pagar -> SALIDA bloqueada
 // ============================================================
 
-void procesarEntrada(const String& rfidCode) {
-  mostrarLCDEntrada("Verificando...", rfidCode.substring(0, min((int)rfidCode.length(), 8)));
+void procesarPuerta(const String& rfidCode) {
+  mostrarLCD("Verificando...", rfidCode.substring(0, min((int)rfidCode.length(), 8)));
 
   String body = "{\"p_rfid_code\":\"" + rfidCode + "\","
-                "\"p_reader_code\":\"" + String(ENTRY_READER_CODE) + "\"}";
+                "\"p_reader_code\":\"" + String(GATE_READER_CODE) + "\"}";
 
   String respuesta = llamarRPC("process_rfid_scan", body);
 
   // Sin respuesta = error de red
   if (respuesta.length() == 0) {
-    ledEntrada(false);
-    mostrarLCDEntrada("Error de red", "Reintente");
+    ledPuerta(false);
+    mostrarLCD("Error de red", "Reintente");
     delay(3000);
-    mostrarLCDEntrada("Bienvenido al", "Estacionamiento");
+    mostrarLCD("Bienvenido al", "Estacionamiento");
     return;
   }
 
   // Parsear respuesta JSON
   DynamicJsonDocument doc(1024);
   if (deserializeJson(doc, respuesta) != DeserializationError::Ok) {
-    Serial.println(F("[JSON] Error parseando respuesta de entrada"));
-    mostrarLCDEntrada("Error sistema", "Reintente");
+    Serial.println(F("[JSON] Error parseando respuesta de puerta"));
+    mostrarLCD("Error sistema", "Reintente");
     delay(3000);
-    mostrarLCDEntrada("Bienvenido al", "Estacionamiento");
+    mostrarLCD("Bienvenido al", "Estacionamiento");
     return;
   }
 
   bool   ok     = doc["ok"]     | false;
   String action = doc["action"] | "";
-  String reason = doc["reason"] | "";
+  String lcdMsg = doc["lcd_message"] | "";
 
   // --- CASO: ENTRADA PERMITIDA ---
   if (ok && action == "entry_allowed") {
-    int ocupados  = doc["occupied_after_entry"] | 0;
-    int capacidad = doc["max_capacity"]          | 0;
+    int ocupados = doc["occupied"] | 0;
 
-    abrirTransqueraEntrada();
+    abrirTranquera();
 
     char linea2[17];
-    snprintf(linea2, sizeof(linea2), "Espacios: %d/%d", ocupados, capacidad);
-    mostrarLCDEntrada("  INGRESO OK!", linea2);
+    snprintf(linea2, sizeof(linea2), "Ocupados: %d", ocupados);
+    mostrarLCD("Ingreso Exitoso!", linea2);
     delay(3000);
-    mostrarLCDEntrada("Bienvenido al", "Estacionamiento");
+    mostrarLCD("Bienvenido al", "Estacionamiento");
+
+  // --- CASO: SALIDA PERMITIDA (ya pago) ---
+  } else if (ok && action == "exit_allowed") {
+    abrirTranquera();
+
+    mostrarLCD("Buen Viaje!", "Hasta pronto");
+    delay(3500);
+    mostrarLCD("Bienvenido al", "Estacionamiento");
+
+  // --- CASO: REQUIERE PAGO (intento de salida sin pagar) ---
+  } else if (!ok && action == "payment_required") {
+    float amountDue = doc["amount_due"] | 0.0f;
+
+    ledPuerta(false); // LED rojo
+
+    char linea1[17], linea2[17];
+    snprintf(linea1, sizeof(linea1), "Debe: S/ %.2f", amountDue);
+    snprintf(linea2, sizeof(linea2), "Pague en Totem");
+
+    mostrarLCD(linea1, linea2);
+
+    // Parpadeo LED rojo para alertar que no puede salir
+    for (int i = 0; i < 8; i++) {
+      digitalWrite(PIN_LED_GATE_RED, LOW);  delay(200);
+      digitalWrite(PIN_LED_GATE_RED, HIGH); delay(200);
+    }
+    ledPuerta(false); // vuelve al rojo fijo
+
+    delay(2000);
+    mostrarLCD("Bienvenido al", "Estacionamiento");
 
   // --- CASO: ESTACIONAMIENTO LLENO ---
-  } else if (reason == "parking_full") {
-    int ocupados  = doc["occupied_spaces"] | 0;
-    int capacidad = doc["max_capacity"]    | 0;
+  } else if (!ok && lcdMsg == "Lleno") {
+    ledPuerta(false);
 
-    ledEntrada(false);
+    mostrarLCD("  LLENO!", "Sin espacios");
 
-    char linea2[17];
-    snprintf(linea2, sizeof(linea2), "%d/%d ocupados", ocupados, capacidad);
-    mostrarLCDEntrada("   LLENO!", linea2);
-
-    // Parpadeo LED rojo de entrada como alerta
+    // Parpadeo LED rojo como alerta
     for (int i = 0; i < 6; i++) {
-      digitalWrite(PIN_LED_ENTRY_RED, LOW);  delay(250);
-      digitalWrite(PIN_LED_ENTRY_RED, HIGH); delay(250);
+      digitalWrite(PIN_LED_GATE_RED, LOW);  delay(250);
+      digitalWrite(PIN_LED_GATE_RED, HIGH); delay(250);
     }
-    ledEntrada(false);
+    ledPuerta(false);
     delay(1500);
-    mostrarLCDEntrada("Bienvenido al", "Estacionamiento");
-
-  // --- CASO: RFID YA ESTA DENTRO ---
-  } else if (reason == "already_inside") {
-    ledEntrada(false);
-    mostrarLCDEntrada("Ya esta dentro", "Vea la salida");
-    delay(4000);
-    mostrarLCDEntrada("Bienvenido al", "Estacionamiento");
+    mostrarLCD("Bienvenido al", "Estacionamiento");
 
   // --- CASO: OTRO ERROR ---
   } else {
-    ledEntrada(false);
-    String lcdMsg = doc["lcd_message"] | "Acceso denegado";
-    mostrarLCDEntrada("Denegado", lcdMsg.substring(0, 16));
+    ledPuerta(false);
+    String msg = lcdMsg.length() > 0 ? lcdMsg : "Acceso denegado";
+    mostrarLCD("Denegado", msg.substring(0, 16));
     delay(3000);
-    mostrarLCDEntrada("Bienvenido al", "Estacionamiento");
+    mostrarLCD("Bienvenido al", "Estacionamiento");
   }
 }
 
 // ============================================================
-//  PROCESAR ESCANEO EN LECTOR DE SALIDA
+//  PROCESAR ESCANEO EN TOTEM DE PAGO
+//
+//  Cuando un RFID se escanea en el totem:
+//    - Si tiene sesion activa sin pagar -> se cobra automaticamente
+//    - Si ya pago -> avisa que ya esta pagado
+//    - Si no esta adentro -> avisa que no hay sesion
+//  Al pagar exitosamente, se enciende el LED de pago por 2 seg
 // ============================================================
 
-void procesarSalida(const String& rfidCode) {
-  mostrarLCDSalida("Verificando...", rfidCode.substring(0, min((int)rfidCode.length(), 8)));
+void procesarPago(const String& rfidCode) {
+  mostrarLCD("Procesando", "pago...");
 
   String body = "{\"p_rfid_code\":\"" + rfidCode + "\","
-                "\"p_reader_code\":\"" + String(EXIT_READER_CODE) + "\"}";
+                "\"p_reader_code\":\"" + String(PAYMENT_READER_CODE) + "\"}";
 
   String respuesta = llamarRPC("process_rfid_scan", body);
 
   if (respuesta.length() == 0) {
-    ledSalida(false);
-    mostrarLCDSalida("Error de red", "Reintente");
+    mostrarLCD("Error de red", "Reintente");
     delay(3000);
-    mostrarLCDSalida("Salida", "Escanee tarjeta");
+    mostrarLCD("Bienvenido al", "Estacionamiento");
     return;
   }
 
   DynamicJsonDocument doc(1024);
   if (deserializeJson(doc, respuesta) != DeserializationError::Ok) {
-    Serial.println(F("[JSON] Error parseando respuesta de salida"));
-    mostrarLCDSalida("Error sistema", "Reintente");
+    Serial.println(F("[JSON] Error parseando respuesta de pago"));
+    mostrarLCD("Error sistema", "Reintente");
     delay(3000);
-    mostrarLCDSalida("Salida", "Escanee tarjeta");
+    mostrarLCD("Bienvenido al", "Estacionamiento");
     return;
   }
 
   bool   ok     = doc["ok"]     | false;
   String action = doc["action"] | "";
-  String reason = doc["reason"] | "";
+  String lcdMsg = doc["lcd_message"] | "";
 
-  // --- CASO: SALIDA PERMITIDA (ya pago) ---
-  if (ok && action == "exit_allowed") {
-    float amountPaid = doc["amount_paid"] | 0.0f;
+  // --- CASO: PAGO EXITOSO ---
+  if (ok && action == "payment_success") {
+    float amountPaid   = doc["amount_paid"]   | 0.0f;
+    int   chargedHours = doc["charged_hours"] | 0;
 
-    abrirTransqueraSalida();
-
-    char linea2[17];
-    snprintf(linea2, sizeof(linea2), "Pagado S/ %.2f", amountPaid);
-    mostrarLCDSalida(" HASTA LUEGO!", linea2);
-    delay(3500);
-    mostrarLCDSalida("Salida", "Escanee tarjeta");
-
-  // --- CASO: REQUIERE PAGO (intento de salida sin pagar) ---
-  } else if (action == "payment_required") {
-    float amountDue   = doc["amount_due"]    | 0.0f;
-    int   chargedHrs  = doc["charged_hours"] | 0;
-
-    ledSalida(false); // LED rojo
+    // Encender LED de pago por 2 segundos
+    encenderLedPago();
 
     char linea1[17], linea2[17];
-    snprintf(linea1, sizeof(linea1), "PAGUE: S/ %.2f", amountDue);
-    snprintf(linea2, sizeof(linea2), "%dh - Use el app", chargedHrs);
+    snprintf(linea1, sizeof(linea1), "Pagado: S/%.2f", amountPaid);
+    snprintf(linea2, sizeof(linea2), "%dh - Puede salir", chargedHours);
 
-    mostrarLCDSalida(linea1, linea2);
+    mostrarLCD(linea1, linea2);
+    delay(4000);
+    mostrarLCD("Bienvenido al", "Estacionamiento");
 
-    // Parpadeo LED rojo para alertar que no puede salir
-    for (int i = 0; i < 8; i++) {
-      digitalWrite(PIN_LED_EXIT_RED, LOW);  delay(200);
-      digitalWrite(PIN_LED_EXIT_RED, HIGH); delay(200);
-    }
-    ledSalida(false); // vuelve al rojo fijo
+  // --- CASO: YA ESTA PAGADO ---
+  } else if (ok && action == "already_paid") {
+    // Encender LED de pago brevemente para confirmar
+    encenderLedPago();
 
-    delay(2000);
-    mostrarLCDSalida("Salida", "Escanee tarjeta");
-
-  // --- CASO: RFID DESCONOCIDO ---
-  } else if (reason == "unknown_rfid") {
-    ledSalida(false);
-    mostrarLCDSalida("RFID no", "registrado");
+    mostrarLCD("Ya esta pagado", "Puede salir");
     delay(3000);
-    mostrarLCDSalida("Salida", "Escanee tarjeta");
+    mostrarLCD("Bienvenido al", "Estacionamiento");
 
-  // --- CASO: SIN SESION ACTIVA ---
-  } else if (reason == "no_active_session") {
-    ledSalida(false);
-    mostrarLCDSalida("Sin sesion", "activa");
+  // --- CASO: NO ESTA ADENTRO ---
+  } else if (!ok) {
+    String msg = lcdMsg.length() > 0 ? lcdMsg : "Sin sesion";
+    mostrarLCD("Error:", msg.substring(0, 16));
     delay(3000);
-    mostrarLCDSalida("Salida", "Escanee tarjeta");
-
-  // --- CASO: OTRO ERROR ---
-  } else {
-    ledSalida(false);
-    String lcdMsg = doc["lcd_message"] | "Acceso denegado";
-    mostrarLCDSalida("Denegado", lcdMsg.substring(0, 16));
-    delay(3000);
-    mostrarLCDSalida("Salida", "Escanee tarjeta");
+    mostrarLCD("Bienvenido al", "Estacionamiento");
   }
 }
 
 // ============================================================
-//  CONSULTAR MENSAJES DEL DASHBOARD PARA EL LCD
+//  CONSULTAR MENSAJES DEL SERVIDOR PARA EL LCD
 //
-//  El dashboard llama confirm_parking_payment() que genera
-//  un hardware_message. El ESP32 lo consume con
-//  fetch_next_lcd_message() y lo muestra en el LCD de salida.
-//  Ejemplo de mensaje: "RFID A1B2C3D4 ha pagado S/ 2.00"
+//  El totem de pago genera hardware_messages que el ESP32
+//  consume con fetch_next_lcd_message() y muestra en el LCD.
 // ============================================================
 
 void consultarMensajesLCD() {
@@ -524,97 +512,72 @@ void consultarMensajesLCD() {
   String mensaje = doc["lcd_message"] | "";
   if (mensaje.length() == 0) return;
 
-  Serial.println("[LCD] Mensaje del dashboard: " + mensaje);
+  Serial.println("[LCD] Mensaje del servidor: " + mensaje);
 
   // Separar en 2 lineas de maximo 16 caracteres
   String linea1 = mensaje.substring(0, 16);
   String linea2 = (mensaje.length() > 16) ? mensaje.substring(16, 32) : "";
 
-  // Parpadeo LED verde para avisar que hay un pago confirmado
-  for (int i = 0; i < 5; i++) {
-    digitalWrite(PIN_LED_EXIT_GREEN, HIGH); delay(200);
-    digitalWrite(PIN_LED_EXIT_GREEN, LOW);  delay(200);
-  }
-
-  mostrarLCDSalida(linea1, linea2);
+  mostrarLCD(linea1, linea2);
   delay(5000);
-  mostrarLCDSalida("Salida", "Escanee tarjeta");
-  ledSalida(false); // vuelve al rojo de espera
+  mostrarLCD("Bienvenido al", "Estacionamiento");
 }
 
 // ============================================================
-//  CONTROL DE TRANQUERAS (SERVOS)
+//  CONTROL DE TRANQUERA (SERVO UNICO)
 // ============================================================
 
-void abrirTransqueraEntrada() {
-  servoEntry.write(SERVO_ABIERTO);
-  entryGateOpen     = true;
-  entryGateOpenedAt = millis();
-  ledEntrada(true); // LED verde
-  Serial.println(F("[GATE] Tranquera ENTRADA -> ABIERTA"));
+void abrirTranquera() {
+  servoGate.write(SERVO_ABIERTO);
+  gateOpen     = true;
+  gateOpenedAt = millis();
+  ledPuerta(true); // LED verde
+  Serial.println(F("[GATE] Tranquera -> ABIERTA"));
 }
 
-void cerrarTransqueraEntrada() {
-  servoEntry.write(SERVO_CERRADO);
-  entryGateOpen = false;
-  ledEntrada(false); // LED rojo
-  Serial.println(F("[GATE] Tranquera ENTRADA -> CERRADA"));
-  mostrarLCDEntrada("Bienvenido al", "Estacionamiento");
-}
-
-void abrirTransqueraSalida() {
-  servoExit.write(SERVO_ABIERTO);
-  exitGateOpen     = true;
-  exitGateOpenedAt = millis();
-  ledSalida(true); // LED verde
-  Serial.println(F("[GATE] Tranquera SALIDA -> ABIERTA"));
-}
-
-void cerrarTransqueraSalida() {
-  servoExit.write(SERVO_CERRADO);
-  exitGateOpen = false;
-  ledSalida(false); // LED rojo
-  Serial.println(F("[GATE] Tranquera SALIDA -> CERRADA"));
-  mostrarLCDSalida("Salida", "Escanee tarjeta");
+void cerrarTranquera() {
+  servoGate.write(SERVO_CERRADO);
+  gateOpen = false;
+  ledPuerta(false); // LED rojo
+  Serial.println(F("[GATE] Tranquera -> CERRADA"));
+  mostrarLCD("Bienvenido al", "Estacionamiento");
 }
 
 // ============================================================
 //  CONTROL DE LEDs
-//  verde=true  -> LED verde ON, rojo OFF
-//  verde=false -> LED verde OFF, rojo ON
 // ============================================================
 
-void ledEntrada(bool verde) {
-  digitalWrite(PIN_LED_ENTRY_GREEN, verde ? HIGH : LOW);
-  digitalWrite(PIN_LED_ENTRY_RED,   verde ? LOW  : HIGH);
+// LED verde/rojo de la puerta
+void ledPuerta(bool verde) {
+  digitalWrite(PIN_LED_GATE_GREEN, verde ? HIGH : LOW);
+  digitalWrite(PIN_LED_GATE_RED,   verde ? LOW  : HIGH);
 }
 
-void ledSalida(bool verde) {
-  digitalWrite(PIN_LED_EXIT_GREEN, verde ? HIGH : LOW);
-  digitalWrite(PIN_LED_EXIT_RED,   verde ? LOW  : HIGH);
+// LED de pago (se enciende al pagar, se apaga solo por timeout)
+void encenderLedPago() {
+  digitalWrite(PIN_LED_PAYMENT, HIGH);
+  paymentLedOn   = true;
+  paymentLedOnAt = millis();
+  Serial.println(F("[LED] LED de pago -> ENCENDIDO (2 seg)"));
+}
+
+void apagarLedPago() {
+  digitalWrite(PIN_LED_PAYMENT, LOW);
+  paymentLedOn = false;
+  Serial.println(F("[LED] LED de pago -> APAGADO"));
 }
 
 // ============================================================
-//  CONTROL DE LCDs
+//  CONTROL DEL LCD (UNICO)
 // ============================================================
 
-void mostrarLCDEntrada(const String& linea1, const String& linea2) {
-  lcdEntry.clear();
-  lcdEntry.setCursor(0, 0);
-  lcdEntry.print(linea1.substring(0, 16));
+void mostrarLCD(const String& linea1, const String& linea2) {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(linea1.substring(0, 16));
   if (linea2.length() > 0) {
-    lcdEntry.setCursor(0, 1);
-    lcdEntry.print(linea2.substring(0, 16));
-  }
-}
-
-void mostrarLCDSalida(const String& linea1, const String& linea2) {
-  lcdExit.clear();
-  lcdExit.setCursor(0, 0);
-  lcdExit.print(linea1.substring(0, 16));
-  if (linea2.length() > 0) {
-    lcdExit.setCursor(0, 1);
-    lcdExit.print(linea2.substring(0, 16));
+    lcd.setCursor(0, 1);
+    lcd.print(linea2.substring(0, 16));
   }
 }
 
@@ -625,8 +588,7 @@ void mostrarLCDSalida(const String& linea1, const String& linea2) {
 void iniciarWiFi() {
   Serial.print(F("[WiFi] Conectando a: "));
   Serial.println(WIFI_SSID);
-  mostrarLCDEntrada("Conectando WiFi", String(WIFI_SSID).substring(0, 16));
-  mostrarLCDSalida("Conectando WiFi", "...");
+  mostrarLCD("Conectando WiFi", String(WIFI_SSID).substring(0, 16));
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -641,13 +603,11 @@ void iniciarWiFi() {
   if (WiFi.status() == WL_CONNECTED) {
     String ip = WiFi.localIP().toString();
     Serial.println("\n[WiFi] Conectado! IP: " + ip);
-    mostrarLCDEntrada("WiFi conectado!", ip);
-    mostrarLCDSalida("WiFi conectado!", ip);
+    mostrarLCD("WiFi conectado!", ip);
     delay(2000);
   } else {
     Serial.println(F("\n[WiFi] FALLO DE CONEXION - verificar SSID/PASSWORD"));
-    mostrarLCDEntrada("WiFi ERROR!", "Verificar datos");
-    mostrarLCDSalida("WiFi ERROR!", "Sin conexion");
+    mostrarLCD("WiFi ERROR!", "Verificar datos");
     delay(3000);
   }
 }
@@ -657,14 +617,13 @@ void verificarWiFi() {
     if (millis() - lastWifiReconnectTry >= RECONEXION_WIFI_INTERVAL_MS) {
       lastWifiReconnectTry = millis();
       Serial.println(F("[WiFi] Desconectado. Intentando reconectar..."));
-      mostrarLCDEntrada("Reconectando", "WiFi...");
+      mostrarLCD("Reconectando", "WiFi...");
       WiFi.disconnect();
       WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
       delay(4000);
       if (WiFi.status() == WL_CONNECTED) {
         Serial.println("[WiFi] Reconectado! IP: " + WiFi.localIP().toString());
-        mostrarLCDEntrada("Bienvenido al", "Estacionamiento");
-        mostrarLCDSalida("Salida", "Escanee tarjeta");
+        mostrarLCD("Bienvenido al", "Estacionamiento");
       }
     }
   }
