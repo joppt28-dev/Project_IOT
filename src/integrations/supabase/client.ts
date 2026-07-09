@@ -90,3 +90,17 @@ export interface DailyReportRow {
   pending_amount: number;
   avg_stay_minutes: number;
 }
+
+export interface ExitAttemptRow {
+  attempt_id: string;
+  session_id: string;
+  rfid: string;
+  reader_code: string;
+  attempt_time: string;
+  charged_hours: number;
+  amount_due: number;
+  result: string;
+  message: string;
+  created_at: string;
+}
+
