@@ -165,7 +165,6 @@ function HistoryPage() {
       </div>
 
       <Card>
-227: 
 
         <CardContent className="p-4">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
