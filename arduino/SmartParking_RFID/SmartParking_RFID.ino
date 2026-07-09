@@ -50,8 +50,8 @@ const char* WIFI_SSID     = "HONOR X7b";
 const char* WIFI_PASSWORD = "281169ender";
 
 // --- Supabase ---
-const char* SUPABASE_URL      = "https://vioxyggyvewwxqkfvuqd.supabase.co";
-const char* SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpb3h5Z2d5dmV3d3hxa2Z2dXFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyMTIwNzMsImV4cCI6MjA5ODc4ODA3M30.3q5Q3MqgRJ7B3ZnQ1qBve-RcJsxa2A3GB67cGSmAQ0U";
+const char* SUPABASE_URL      = "https://imatshddhwpjhxvcwyru.supabase.co";
+const char* SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImltYXRzaGRkaHdwamh4dmN3eXJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1NTExOTQsImV4cCI6MjA5OTEyNzE5NH0.fHiz5E2r0w4ZThG4tcGVpp0aJrDIiwGw8KQcvZLB3iA";
 
 // --- Codigos de los lectores (deben coincidir con la BD) ---
 const char* GATE_READER_CODE    = "GATE_READER_01";     // Puerta unica (entrada/salida)

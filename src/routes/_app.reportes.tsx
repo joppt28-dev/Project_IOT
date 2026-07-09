@@ -33,6 +33,7 @@ import { supabase, type DailyReportRow, type ParkingReportRow } from "@/integrat
 import { formatMoney } from "@/lib/format";
 import { exportToExcel, exportToPdf } from "@/lib/export";
 import { cn } from "@/lib/utils";
+import { useTestDate, endOfTestDay } from "@/hooks/use-test-date";
 
 export const Route = createFileRoute("/_app/reportes")({
   component: ReportsPage,
@@ -59,11 +60,24 @@ async function fetchAllSessions(): Promise<ParkingReportRow[]> {
 }
 
 function ReportsPage() {
+  const { testDate, testDateISO, isOverridden } = useTestDate();
   const daily = useQuery({ queryKey: ["daily-report"], queryFn: fetchDaily });
   const all = useQuery({ queryKey: ["all-sessions"], queryFn: fetchAllSessions });
   const [rfidSearch, setRfidSearch] = useState("");
 
-  const dailyAsc = useMemo(() => [...(daily.data ?? [])].reverse(), [daily.data]);
+  // Filter daily and session data by test date
+  const filteredDaily = useMemo(() => {
+    return daily.data ?? [];
+  }, [daily.data]);
+
+  const filteredAll = useMemo(() => {
+    const list = all.data ?? [];
+    if (!isOverridden) return list;
+    const endLimit = endOfTestDay(testDate).getTime();
+    return list.filter((r) => new Date(r.entry_time).getTime() <= endLimit);
+  }, [all.data, testDate, isOverridden]);
+
+  const dailyAsc = useMemo(() => [...filteredDaily].reverse(), [filteredDaily]);
 
   // Monthly aggregation
   const monthly = useMemo(() => {
@@ -81,27 +95,27 @@ function ReportsPage() {
   // Status distribution
   const statusDist = useMemo(() => {
     const counts: Record<string, number> = {};
-    (all.data ?? []).forEach((r) => {
+    filteredAll.forEach((r) => {
       counts[r.status] = (counts[r.status] || 0) + 1;
     });
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
-  }, [all.data]);
+  }, [filteredAll]);
 
   // Peak hours
   const peakHours = useMemo(() => {
     const buckets = Array.from({ length: 24 }, (_, h) => ({ hour: `${String(h).padStart(2, "0")}:00`, entries: 0 }));
-    (all.data ?? []).forEach((r) => {
+    filteredAll.forEach((r) => {
       const h = new Date(r.entry_time).getHours();
       buckets[h].entries += 1;
     });
     return buckets;
-  }, [all.data]);
+  }, [filteredAll]);
 
   // RFID search
   const rfidRows = useMemo(() => {
     if (!rfidSearch) return [];
-    return (all.data ?? []).filter((r) => r.rfid.toLowerCase().includes(rfidSearch.toLowerCase()));
-  }, [all.data, rfidSearch]);
+    return filteredAll.filter((r) => r.rfid.toLowerCase().includes(rfidSearch.toLowerCase()));
+  }, [filteredAll, rfidSearch]);
 
   const COLORS = [
     "var(--color-primary)",
@@ -119,6 +133,13 @@ function ReportsPage() {
           <TabsTrigger value="monthly">Mensual</TabsTrigger>
           <TabsTrigger value="rfid">Por RFID</TabsTrigger>
         </TabsList>
+
+        {(daily.error || all.error) && (
+          <div className="bg-red-100 text-red-600 p-4 rounded-md mt-4">
+            <strong>Error de Base de Datos:</strong>
+            <pre className="text-xs mt-2">{JSON.stringify(daily.error || all.error, null, 2)}</pre>
+          </div>
+        )}
 
         <TabsContent value="daily" className="space-y-6 mt-6">
           <div className="flex flex-wrap gap-2 justify-end">
@@ -143,7 +164,7 @@ function ReportsPage() {
                   <BarChart data={dailyAsc}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
                     <XAxis dataKey="report_date" tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
-                    <YAxis tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
+                    <YAxis tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" allowDecimals={false} />
                     <Tooltip
                       contentStyle={{ background: "var(--color-popover)", border: "1px solid var(--color-border)", borderRadius: 8 }}
                       formatter={(v: unknown) => formatMoney(Number(v))}
@@ -208,7 +229,7 @@ function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(daily.data ?? []).map((r, i) => (
+                  {filteredDaily.map((r, i) => (
                     <TableRow key={r.report_date} className={cn(i % 2 === 1 && "bg-muted/30")}>
                       <TableCell>{r.report_date}</TableCell>
                       <TableCell className="text-right">{r.total_sessions}</TableCell>

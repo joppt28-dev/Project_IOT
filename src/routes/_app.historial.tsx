@@ -26,6 +26,7 @@ import { supabase, type ParkingReportRow, type SessionStatus } from "@/integrati
 import { formatMoney, formatDateTime, formatDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { exportToExcel, exportToPdf } from "@/lib/export";
+import { useTestDate, endOfTestDay } from "@/hooks/use-test-date";
 
 export const Route = createFileRoute("/_app/historial")({
   component: HistoryPage,
@@ -54,6 +55,7 @@ function statusBadge(s: SessionStatus) {
 const PAGE_SIZE = 20;
 
 function HistoryPage() {
+  const { testDate, isOverridden } = useTestDate();
   const q = useQuery({ queryKey: ["report-history"], queryFn: fetchHistory });
   const [statusFilter, setStatusFilter] = useState<"all" | SessionStatus>("all");
   const [search, setSearch] = useState("");
@@ -62,7 +64,11 @@ function HistoryPage() {
   const [page, setPage] = useState(1);
 
   const filtered = useMemo(() => {
-    const list = q.data ?? [];
+    let list = q.data ?? [];
+    if (isOverridden) {
+      const endLimit = endOfTestDay(testDate).getTime();
+      list = list.filter((r) => new Date(r.entry_time).getTime() <= endLimit);
+    }
     return list.filter((r) => {
       if (statusFilter !== "all" && r.status !== statusFilter) return false;
       if (search && !r.rfid.toLowerCase().includes(search.toLowerCase())) return false;
@@ -70,7 +76,7 @@ function HistoryPage() {
       if (to && new Date(r.entry_time) > new Date(to + "T23:59:59")) return false;
       return true;
     });
-  }, [q.data, statusFilter, search, from, to]);
+  }, [q.data, statusFilter, search, from, to, testDate, isOverridden]);
 
   const totalRevenue = filtered.reduce((s, r) => s + Number(r.amount_paid || 0), 0);
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));

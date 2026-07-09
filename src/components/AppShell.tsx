@@ -155,7 +155,7 @@ export function AppShell({ children, userEmail }: { children: ReactNode; userEma
           <div className="flex items-center gap-2">
             <div
               className={cn(
-                "hidden sm:flex items-center gap-1.5 pr-2 border-r border-border",
+                "flex items-center gap-1.5 pr-2 border-r border-border",
                 isOverridden && "text-warning",
               )}
               title="Fecha de prueba: cambia el 'hoy' que ven el dashboard y los reportes"

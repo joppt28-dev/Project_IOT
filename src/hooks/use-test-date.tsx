@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 type Ctx = {
   /** The date being used as "today" throughout the app (start-of-day in local time). */
@@ -33,8 +34,23 @@ export function TestDateProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (iso === realTodayISO()) window.localStorage.removeItem(STORAGE_KEY);
-    else window.localStorage.setItem(STORAGE_KEY, iso);
+    
+    const isToday = iso === realTodayISO();
+    
+    // Save locally
+    if (isToday) {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(STORAGE_KEY, iso);
+    }
+
+    // Save to Supabase globally for the Arduino to read
+    supabase
+      .from("system_settings")
+      .upsert({ id: 1, test_date: isToday ? null : iso })
+      .then(({ error }) => {
+        if (error) console.error("Error al actualizar la fecha global de prueba en Supabase:", error);
+      });
   }, [iso]);
 
   const [y, m, d] = iso.split("-").map(Number);

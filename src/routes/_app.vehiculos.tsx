@@ -25,6 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase, type ActiveSessionRow, type OccupancyRow, type SessionStatus } from "@/integrations/supabase/client";
 import { formatMoney, formatDateTime, formatDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useTestDate, endOfTestDay } from "@/hooks/use-test-date";
 
 export const Route = createFileRoute("/_app/vehiculos")({
   component: VehiclesPage,
@@ -59,6 +60,7 @@ function statusBadge(s: SessionStatus) {
 }
 
 function VehiclesPage() {
+  const { testDate, isOverridden } = useTestDate();
   const active = useQuery({ queryKey: ["active-sessions"], queryFn: fetchActive, refetchInterval: 15_000 });
   const occ = useQuery({ queryKey: ["occupancy"], queryFn: fetchOccupancy, refetchInterval: 30_000 });
   const currency = occ.data?.currency ?? "PEN";
@@ -69,7 +71,11 @@ function VehiclesPage() {
   const [to, setTo] = useState("");
 
   const rows = useMemo(() => {
-    const list = active.data ?? [];
+    let list = active.data ?? [];
+    if (isOverridden) {
+      const endLimit = endOfTestDay(testDate).getTime();
+      list = list.filter((r) => new Date(r.entry_time).getTime() <= endLimit);
+    }
     return list.filter((r) => {
       if (statusFilter !== "all" && r.status !== statusFilter) return false;
       if (search && !r.rfid.toLowerCase().includes(search.toLowerCase())) return false;
@@ -77,7 +83,7 @@ function VehiclesPage() {
       if (to && new Date(r.entry_time) > new Date(to + "T23:59:59")) return false;
       return true;
     });
-  }, [active.data, statusFilter, search, from, to]);
+  }, [active.data, statusFilter, search, from, to, testDate, isOverridden]);
 
   return (
     <div className="space-y-6">

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
-import { Save, Radio, Database, Loader2, ExternalLink, AlertCircle } from "lucide-react";
+import { Save, Radio, Database, Loader2, ExternalLink, AlertCircle, CalendarClock, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { supabase, type OccupancyRow } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useTestDate } from "@/hooks/use-test-date";
 
 export const Route = createFileRoute("/_app/configuracion")({
   component: SettingsPage,
@@ -55,6 +56,7 @@ async function fetchOcc(): Promise<OccupancyRow> {
 
 function SettingsPage() {
   const occ = useQuery({ queryKey: ["occupancy"], queryFn: fetchOcc });
+  const { testDate, testDateISO, isOverridden, setTestDate, reset } = useTestDate();
   const [settings, setSettings] = useState<LocalSettings>(DEFAULT);
   const [logs, setLogs] = useState<string[]>([]);
 
@@ -88,6 +90,63 @@ function SettingsPage() {
 
   return (
     <div className="space-y-6">
+      {/* ── Fecha del sistema ── */}
+      <Card className={isOverridden ? "border-warning/50 shadow-warning/10 shadow-lg" : ""}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarClock className={`w-5 h-5 ${isOverridden ? "text-warning" : "text-primary"}`} />
+            Fecha del sistema
+          </CardTitle>
+          <CardDescription>
+            Cambia la fecha que usa toda la aplicación como "hoy". Todos los registros de vehículos,
+            reportes y estadísticas usarán esta fecha.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isOverridden && (
+            <Alert className="border-warning/40 bg-warning/10 text-warning">
+              <AlertCircle className="w-4 h-4" />
+              <AlertTitle>Fecha modificada</AlertTitle>
+              <AlertDescription>
+                El sistema está usando <strong>{testDate.toLocaleDateString("es-PE", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</strong> como fecha actual.
+                Todos los registros y reportes se mostrarán y generarán con esta fecha.
+              </AlertDescription>
+            </Alert>
+          )}
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+            <div className="flex-1 w-full">
+              <Label>Fecha actual del sistema</Label>
+              <Input
+                type="date"
+                value={testDateISO}
+                onChange={(e) => {
+                  setTestDate(e.target.value);
+                  toast.success(`Fecha cambiada a ${new Date(e.target.value + "T12:00:00").toLocaleDateString("es-PE", { day: "2-digit", month: "long", year: "numeric" })}`);
+                }}
+                className={isOverridden ? "border-warning text-warning font-semibold" : ""}
+              />
+            </div>
+            <Button
+              variant={isOverridden ? "default" : "outline"}
+              onClick={() => {
+                reset();
+                toast.success("Fecha restablecida a hoy");
+              }}
+              disabled={!isOverridden}
+              className={isOverridden ? "bg-warning text-warning-foreground hover:bg-warning/90" : ""}
+            >
+              <RotateCcw className="w-4 h-4 mr-1.5" />
+              Restablecer a hoy
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {isOverridden
+              ? `Fecha real: ${new Date().toLocaleDateString("es-PE", { day: "2-digit", month: "long", year: "numeric" })} — Fecha del sistema: ${testDate.toLocaleDateString("es-PE", { day: "2-digit", month: "long", year: "numeric" })}`
+              : "La fecha del sistema coincide con la fecha real de hoy."}
+          </p>
+        </CardContent>
+      </Card>
+
       <Alert>
         <AlertCircle className="w-4 h-4" />
         <AlertTitle>Configuración del sistema</AlertTitle>

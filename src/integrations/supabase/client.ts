@@ -2,9 +2,9 @@ import { createClient } from "@supabase/supabase-js";
 
 // Connects to the user's existing Supabase project.
 // Anon (publishable) key is safe to ship in client code.
-const SUPABASE_URL = "https://vioxyggyvewwxqkfvuqd.supabase.co";
+const SUPABASE_URL = "https://imatshddhwpjhxvcwyru.supabase.co";
 const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpb3h5Z2d5dmV3d3hxa2Z2dXFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyMTIwNzMsImV4cCI6MjA5ODc4ODA3M30.3q5Q3MqgRJ7B3ZnQ1qBve-RcJsxa2A3GB67cGSmAQ0U";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImltYXRzaGRkaHdwamh4dmN3eXJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1NTExOTQsImV4cCI6MjA5OTEyNzE5NH0.fHiz5E2r0w4ZThG4tcGVpp0aJrDIiwGw8KQcvZLB3iA";
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
